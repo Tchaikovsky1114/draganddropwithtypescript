@@ -1,3 +1,44 @@
+// Project state Management
+
+class ProjectState {
+  private projects: any[] = [];
+  private static instance: ProjectState
+
+  private constructor(){
+
+  }
+
+  static getInstance() {
+    if(this.instance){
+      return this.instance;
+    }
+    this.instance = new ProjectState()
+    return this.instance;
+  }
+
+  addProject(title: string, description: string, numOfPeople: number) {
+    const newProject= {
+      id: Math.random().toString(),
+      title: title,
+      description: description,
+      people: numOfPeople
+    }
+    this.projects.push(newProject);
+  }
+}
+
+
+const projectState = ProjectState.getInstance();
+
+
+
+
+
+
+
+
+
+
 // bind decorator
 function Bind(_:any,__:string,descriptor:PropertyDescriptor){
     
@@ -44,19 +85,22 @@ function validate(validatableInput:Validatable ) {
   return isValid
 }
 
-
+enum ProjectListType {
+  ACTIVE = 'active',
+  FINISHED = 'finished'
+}
 
 class ProjectList {
   templateElement: HTMLTemplateElement
   hostElement: HTMLDivElement
   element: HTMLElement
+  
 
-
-  constructor(private type: 'active' | 'finished') {
+  constructor(private type: ProjectListType) {
     this.templateElement = document.querySelector('#project-list')!
     this.hostElement = document.querySelector('#app')!
     this.element = document.querySelector('.projects')!
-
+    
     const importedNode = document.importNode( this.templateElement.content, true);
 
     this.element= importedNode.firstElementChild as HTMLElement
@@ -65,6 +109,10 @@ class ProjectList {
     this.renderContent()
   }
 
+
+  addProject() {
+
+  }
   private attach() {
     this.hostElement.insertAdjacentElement('beforeend', this.element)
   }
@@ -178,5 +226,5 @@ class ProjectInput {
 }
 
 const projectInput = new ProjectInput()
-const activeProjectList = new ProjectList('active')
-const finishedProjectList = new ProjectList('finished')
+const activeProjectList = new ProjectList(ProjectListType.ACTIVE)
+const finishedProjectList = new ProjectList(ProjectListType.FINISHED)
