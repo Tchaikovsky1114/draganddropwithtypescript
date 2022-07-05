@@ -1,15 +1,5 @@
 // Project state Management
 
-
-
-
-
-
-
-
-
-
-
 // bind decorator
 function Bind(_:any,__:string,descriptor:PropertyDescriptor){
     
@@ -23,7 +13,6 @@ function Bind(_:any,__:string,descriptor:PropertyDescriptor){
   };
   return adjustDescriptor
 }
-
 
 // Validation
 
@@ -68,37 +57,25 @@ class Project {
   }
 }
 
-type Listener = (items: Project[]) => void;
+type Listener<T> = (items: T[]) => void;
 
 
+class State<T> {
+  protected listeners: Listener<T>[] = [];
+  // listeners array는 함수를 담는다.
+  addListener(listenerFn: Listener<T>) {
+    this.listeners.push(listenerFn)
+  }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class ProjectState {
-  private listeners: Listener[] = [];
+class ProjectState extends State<Project> {
+  
   private projects: Project[] = [];
 
   private static instance: ProjectState
 
   private constructor(){
-
+    super();
   }
 
   static getInstance() {
@@ -108,10 +85,8 @@ class ProjectState {
     this.instance = new ProjectState()
     return this.instance;
   }
-  // listeners array는 함수를 담는다.
-  addListener(listenerFn:Listener) {
-    this.listeners.push(listenerFn)
-  }
+
+
   addProject(title: string, description: string, numOfPeople: number) {
     const newProject= new Project(Math.random().toString(),title,description,numOfPeople,ProjectListType.ACTIVE)
     //projects array에 input value를 담아준 뒤에
@@ -122,98 +97,153 @@ class ProjectState {
       // slice는 원본 배열을 바꾸지 않고 얕은 복사로 새로운 배열 객체로 반환한다.
       listenerFn(this.projects.slice())
 
-
-
-
       // spread operator 사용가능 하지만, 성능상 slice가 더 빠르다.
       // listenerFn([...this.projects]);
     }
   }
-
-
 }
 
 // 전역변수
 const projectState = ProjectState.getInstance();
 
 
-
-
-
-
-class ProjectList {
+// Component Base Class (generic Class) - 추상 클래스에서는 직접 인스턴스화가 이루어지지 않는다.
+// 언제나 상속을 위해 사용된다.
+// templateELement,hostElement 등 여러 Element의 Type은 조금씩 상이하기에
+// generic을 통해 구현하는 타입을 다르게 가져가게 만든다.
+// class에서 사용하는 generic은 클래스를 재활용할 수 있게 도와주는 역할이다.
+abstract class Component<T extends HTMLElement, U extends HTMLElement> {
   templateElement: HTMLTemplateElement
-  hostElement: HTMLDivElement
-  element: HTMLElement
-  assignedProjects: Project[]
+  hostElement: T
+  element: U
+  constructor(templateId: string, hostElementId: string,insertAtStart:boolean, newElementId?: string){
+    this.templateElement = document.getElementById(templateId)! as HTMLTemplateElement;
+    this.hostElement = document.getElementById(hostElementId)! as T
+    
+    const importedNode = document.importNode(
+      this.templateElement.content,
+      true
+    )
+    this.element = importedNode.firstElementChild as U
+    if(newElementId){
+      this.element.id = newElementId;
+    }
+    this.attatch(insertAtStart)
+  }
+    private attatch(insertAtStart: boolean) {
+      this.hostElement.insertAdjacentElement(insertAtStart ? 'afterbegin' : 'beforeend', this.element)
+  }
 
+  abstract configure?() : void
+  abstract renderContent() : void
+}
+
+
+
+
+
+
+// ProjectItem Class
+
+class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> {
+
+  private project: Project;
+
+  constructor(hostId: string, project: Project){
+    super('single-project', hostId, false, project.id)
+    this.project = project;
+
+    this.configure();
+    this.renderContent();
+  }
+
+  configure() {
+
+  }
+
+  renderContent() {
+    this.element.querySelector('h2')!.textContent = this.project.title;
+    this.element.querySelector('h3')!.textContent = this.project.people.toString();
+    this.element.querySelector('p')!.textContent = this.project.description;
+  }
+
+}
+
+
+
+
+
+
+
+
+
+
+// UI component의 역할을하는 ProjectList
+class ProjectList extends Component<HTMLDivElement, HTMLElement> {
+    assignedProjects: Project[]
+  
   constructor(private type: ProjectListType) {
-    this.templateElement = document.querySelector('#project-list')!
-    this.hostElement = document.querySelector('#app')!
-    this.element = document.querySelector('.projects')!
+    super('project-list','app',false,`${type}-projects`)
+
     this.assignedProjects = [];
-    const importedNode = document.importNode( this.templateElement.content, true);
-
-    this.element= importedNode.firstElementChild as HTMLElement
-    this.element.id = `${this.type}-projects`
-
-    projectState.addListener((projects: Project[]) => {
-      this.assignedProjects = projects;
-      this.renderProjects()
-    })
-    this.attach();
+    // project의 status에 따라 active,finished list로 옮겨갈 수 있게끔 만들어준다.
+    this.configure()
     this.renderContent()
   }
-
-  private renderProjects() {
-   const listEl = document.getElementById(`${this.type}-projects-list`)
-   for (const item of this.assignedProjects){
-    const listItem = document.createElement('li');
-    listItem.textContent = item.title
-    listEl?.appendChild(listItem)
-   } 
+  configure(): void {
+    projectState.addListener((projects: Project[]) => {
+      const relevantProjects = projects.filter(project => {
+        if(this.type === ProjectListType.ACTIVE){
+        return  project.status === ProjectListType.ACTIVE
+        }
+        return project.status === ProjectListType.FINISHED
+      })
+      this.assignedProjects = relevantProjects;
+      this.renderProjects()
+    })
   }
 
-  private attach() {
-    this.hostElement.insertAdjacentElement('beforeend', this.element)
-  }
-
-  private renderContent() {
+    renderContent() {
     const listId = `${this.type}-projects-list`;
     this.element.querySelector('ul')!.id = listId;
     this.element.querySelector('h2')!.textContent = this.type.toUpperCase() + ' PROJECTS'
   }
+
+
+  private renderProjects() {
+   const listEl = document.getElementById(`${this.type}-projects-list`) as HTMLUListElement
+   listEl.innerHTML = '';
+   for (const item of this.assignedProjects){
+    new ProjectItem(this.element.id, item)
+   } 
+  }
+
+
 }
 
 
-class ProjectInput {
-  templateElement: HTMLTemplateElement
-  hostElement: HTMLDivElement
-  element: HTMLFormElement
+class ProjectInput extends Component<HTMLDivElement,HTMLFormElement> {
+  
   titleInputElement: HTMLInputElement
   descriptionElement: HTMLInputElement
   peopleElement: HTMLInputElement
 
-
-
   constructor() {
-    this.templateElement = document.getElementById('project-input')! as HTMLTemplateElement
-    this.hostElement = document.getElementById('app')! as HTMLDivElement
-
-    // importedNode는 현재 문서에 삽입할 다른 문서의 복사본을 만든다.
-    // 포함하려면 현재 문서 트리에 있는 노드와 appendChild(),insertBefore()같은 삽입 메서드를 호출해야 한다.
-    const importedNode = document.importNode(this.templateElement.content, true)
-    this.element = importedNode.firstElementChild as HTMLFormElement
-
+    super('project-input','app',true,'user-input')
     this.titleInputElement = this.element.querySelector('#title')! as HTMLInputElement
     this.descriptionElement = this.element.querySelector('#description')! as HTMLInputElement
     this.peopleElement = this.element.querySelector('#people')! as HTMLInputElement
     this.configure()
-    this.attach()
-    this.gatherUSerInput()
+    this.gatherUserInput()
   }
 
-  private gatherUSerInput(): [string,string,number] | void {
+  configure() {
+    // event에서의 this는 클래스를 가리키지 않고 current Target을 가리키기 때문에 bind로 현재 method를 담고 있는 class를 가리키게 한다.
+    this.element.addEventListener('submit', this.submitHandler)
+  }
+  renderContent(): void {}
+
+  private gatherUserInput(): [string,string,number] | void {
     const enteredTitle = this.titleInputElement.value
     const enteredDescription = this.descriptionElement.value
     const enteredPeople = this.peopleElement.value
@@ -255,7 +285,7 @@ class ProjectInput {
   @Bind
   private submitHandler(event: Event) {
     event.preventDefault();
-    const userInput = this.gatherUSerInput()
+    const userInput = this.gatherUserInput()
     if(Array.isArray(userInput)){
       const [title,desc,people] = userInput;
       projectState.addProject(title,desc,people)
@@ -263,15 +293,8 @@ class ProjectInput {
     this.clearInputs()
   }
 
-  private configure() {
-    // event에서의 this는 클래스를 가리키지 않고 current Target을 가리키기 때문에 bind로 현재 method를 담고 있는 class를 가리키게 한다.
-    this.element.addEventListener('submit', this.submitHandler)
-  }
 
-  private attach() {
-    this.hostElement.insertAdjacentElement('afterbegin',this.element)
-    this.element.id = 'user-input'
-  }
+
 }
 
 const projectInput = new ProjectInput()
