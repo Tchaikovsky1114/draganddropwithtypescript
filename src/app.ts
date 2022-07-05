@@ -68,6 +68,23 @@ class State<T> {
   }
 }
 
+
+// Drag & Drop Interfaces
+interface Draggable {
+  dragStartHandler(event: DragEvent): void
+  dragEndHandler(event: DragEvent):void
+}
+
+interface DragTarget {
+  dragOverHandler(event:DragEvent) :void
+  dropHandler(event:DragEvent) :void
+  dragLeaveHandler(event:DragEvent) :void
+}
+
+
+
+
+
 class ProjectState extends State<Project> {
   
   private projects: Project[] = [];
@@ -86,7 +103,6 @@ class ProjectState extends State<Project> {
     return this.instance;
   }
 
-
   addProject(title: string, description: string, numOfPeople: number) {
     const newProject= new Project(Math.random().toString(),title,description,numOfPeople,ProjectListType.ACTIVE)
     //projects array에 input value를 담아준 뒤에
@@ -99,6 +115,20 @@ class ProjectState extends State<Project> {
 
       // spread operator 사용가능 하지만, 성능상 slice가 더 빠르다.
       // listenerFn([...this.projects]);
+    }
+  }
+
+  moveProject(projectId: string, newStatus: ProjectListType) {
+    const project = this.projects.find(project => project.id === projectId)
+    if(project && project.status !== newStatus) {
+      project.status = newStatus;
+      this.updateListeners()
+    }
+  }
+
+  private updateListeners() {
+    for(const listenerFn of this.listeners) {
+      listenerFn(this.projects.slice())
     }
   }
 }
@@ -116,6 +146,7 @@ abstract class Component<T extends HTMLElement, U extends HTMLElement> {
   templateElement: HTMLTemplateElement
   hostElement: T
   element: U
+
   constructor(templateId: string, hostElementId: string,insertAtStart:boolean, newElementId?: string){
     this.templateElement = document.getElementById(templateId)! as HTMLTemplateElement;
     this.hostElement = document.getElementById(hostElementId)! as T
@@ -140,15 +171,11 @@ abstract class Component<T extends HTMLElement, U extends HTMLElement> {
 
 
 
-
-
-
 // ProjectItem Class
 
-class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> {
+class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> implements Draggable {
 
   private project: Project;
-
 
   get persons() {
     if(this.project.people ===1){
@@ -156,19 +183,31 @@ class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> {
     } else {
       return `${this.project.people} 명 예약`
     }
-
   }
 
   constructor(hostId: string, project: Project){
     super('single-project', hostId, false, project.id)
     this.project = project;
-
     this.configure();
     this.renderContent();
   }
 
-  configure() {
+ // event 함수에 binding
+  @Bind
+  dragStartHandler(event: DragEvent) {
+    //dataTranster. 데이터를 drag이밴트에 붙여 drop한 곳에 데이터를 전송할 수 있다.
+    // drag event는 언제나 같은 이벤트이지만 trigger에 따라 데이터 전송이 불가능할 수도 있기 떄문에 !를 붙인다.
+    // .setData의 첫번째 매개변수로는 포맷 문자열을, 두번째 매개변수로는 첫번째 매개변수에 지정한 포맷과 일치하는 값을 지정.
+    event.dataTransfer!.setData('text/plain',this.project.id);
+    event.dataTransfer!.effectAllowed = 'move'
+  }
+  dragEndHandler(_: DragEvent) {
+    console.log('DragEnd');
+  }
 
+  configure() {
+    this.element.addEventListener('dragstart',this.dragStartHandler)
+    this.element.addEventListener('dragend',this.dragEndHandler)
   }
 
   renderContent() {
@@ -176,31 +215,54 @@ class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> {
     this.element.querySelector('h3')!.textContent = this.persons;
     this.element.querySelector('p')!.textContent = this.project.description;
   }
-
 }
 
 
 
 
-
-
-
-
-
-
 // UI component의 역할을하는 ProjectList
-class ProjectList extends Component<HTMLDivElement, HTMLElement> {
+// List는 Drag한 결과를 받기 때문에 over, drop, leave를 event를 받는다
+class ProjectList extends Component<HTMLDivElement, HTMLElement> implements DragTarget {
     assignedProjects: Project[]
   
   constructor(private type: ProjectListType) {
     super('project-list','app',false,`${type}-projects`)
-
     this.assignedProjects = [];
     // project의 status에 따라 active,finished list로 옮겨갈 수 있게끔 만들어준다.
     this.configure()
     this.renderContent()
   }
+
+  @Bind
+  dragOverHandler(event: DragEvent) {
+    // 이미지가 들어올 수 없게 블로킹
+    if(event.dataTransfer && event.dataTransfer.types[0] === 'text/plain'){
+
+      // preventDefault를 사용해야하는 이유는 기본적으로 data,elements는 다른 element에 drop될 수 없기 때문이다.
+      // drop event를 허용하려면 drop을 받는 element의 기본적인 event 행동을 방지해야 하기에 preventDefault()를 사용한다.
+      event.preventDefault()
+      const listEl = this.element.querySelector('ul')!;
+      listEl.classList.add('droppable');
+    }
+  }
+  @Bind
+  dropHandler(event: DragEvent) {
+    const projectId = event.dataTransfer!.getData('text/plain');
+    projectState.moveProject(projectId, this.type === ProjectListType.ACTIVE ? ProjectListType.ACTIVE : ProjectListType.FINISHED)
+  }
+
+  @Bind
+  dragLeaveHandler(_: DragEvent) {
+    const listEl = this.element.querySelector('ul')!;
+    listEl.classList.remove('droppable');
+  }
+
+
   configure(): void {
+    this.element.addEventListener('dragover',this.dragOverHandler)
+    this.element.addEventListener('dragleave',this.dragLeaveHandler)
+    this.element.addEventListener('drop',this.dropHandler)
+
     projectState.addListener((projects: Project[]) => {
       const relevantProjects = projects.filter(project => {
         if(this.type === ProjectListType.ACTIVE){
@@ -219,7 +281,6 @@ class ProjectList extends Component<HTMLDivElement, HTMLElement> {
     this.element.querySelector('h2')!.textContent = this.type.toUpperCase() + ' PROJECTS'
   }
 
-
   private renderProjects() {
    const listEl = document.getElementById(`${this.type}-projects-list`) as HTMLUListElement
    listEl.innerHTML = '';
@@ -227,8 +288,6 @@ class ProjectList extends Component<HTMLDivElement, HTMLElement> {
     new ProjectItem(this.element.querySelector('ul')!.id, item)
    } 
   }
-
-
 }
 
 
