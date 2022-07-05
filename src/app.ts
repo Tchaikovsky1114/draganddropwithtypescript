@@ -57,8 +57,8 @@ function validate(validatableInput:Validatable ) {
 }
 
 enum ProjectListType {
-  ACTIVE,
-  FINISHED
+  ACTIVE = 'active',
+  FINISHED = 'finished'
 }
 
 
@@ -174,9 +174,6 @@ class ProjectList {
    } 
   }
 
-  addProject() {
-
-  }
   private attach() {
     this.hostElement.insertAdjacentElement('beforeend', this.element)
   }
@@ -184,7 +181,7 @@ class ProjectList {
   private renderContent() {
     const listId = `${this.type}-projects-list`;
     this.element.querySelector('ul')!.id = listId;
-    this.element.querySelector('h2')!.textContent = this.type + 'PROJECTS'
+    this.element.querySelector('h2')!.textContent = this.type.toUpperCase() + ' PROJECTS'
   }
 }
 
