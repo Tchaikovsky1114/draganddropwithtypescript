@@ -1,34 +1,5 @@
 // Project state Management
 
-class ProjectState {
-  private projects: any[] = [];
-  private static instance: ProjectState
-
-  private constructor(){
-
-  }
-
-  static getInstance() {
-    if(this.instance){
-      return this.instance;
-    }
-    this.instance = new ProjectState()
-    return this.instance;
-  }
-
-  addProject(title: string, description: string, numOfPeople: number) {
-    const newProject= {
-      id: Math.random().toString(),
-      title: title,
-      description: description,
-      people: numOfPeople
-    }
-    this.projects.push(newProject);
-  }
-}
-
-
-const projectState = ProjectState.getInstance();
 
 
 
@@ -86,29 +57,122 @@ function validate(validatableInput:Validatable ) {
 }
 
 enum ProjectListType {
-  ACTIVE = 'active',
-  FINISHED = 'finished'
+  ACTIVE,
+  FINISHED
 }
+
+
+class Project {
+  constructor(public id: string, public title: string, public description: string, public people: number, public status: ProjectListType){
+
+  }
+}
+
+type Listener = (items: Project[]) => void;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class ProjectState {
+  private listeners: Listener[] = [];
+  private projects: Project[] = [];
+
+  private static instance: ProjectState
+
+  private constructor(){
+
+  }
+
+  static getInstance() {
+    if(this.instance){
+      return this.instance;
+    }
+    this.instance = new ProjectState()
+    return this.instance;
+  }
+  // listeners array는 함수를 담는다.
+  addListener(listenerFn:Listener) {
+    this.listeners.push(listenerFn)
+  }
+  addProject(title: string, description: string, numOfPeople: number) {
+    const newProject= new Project(Math.random().toString(),title,description,numOfPeople,ProjectListType.ACTIVE)
+    //projects array에 input value를 담아준 뒤에
+    this.projects.push(newProject);
+
+    // listeners 배열 요소(함수)를 순회하면서 요소를 실행시킨다.
+    for(const listenerFn of this.listeners) {
+      // slice는 원본 배열을 바꾸지 않고 얕은 복사로 새로운 배열 객체로 반환한다.
+      listenerFn(this.projects.slice())
+
+
+
+
+      // spread operator 사용가능 하지만, 성능상 slice가 더 빠르다.
+      // listenerFn([...this.projects]);
+    }
+  }
+
+
+}
+
+// 전역변수
+const projectState = ProjectState.getInstance();
+
+
+
+
+
 
 class ProjectList {
   templateElement: HTMLTemplateElement
   hostElement: HTMLDivElement
   element: HTMLElement
-  
+  assignedProjects: Project[]
 
   constructor(private type: ProjectListType) {
     this.templateElement = document.querySelector('#project-list')!
     this.hostElement = document.querySelector('#app')!
     this.element = document.querySelector('.projects')!
-    
+    this.assignedProjects = [];
     const importedNode = document.importNode( this.templateElement.content, true);
 
     this.element= importedNode.firstElementChild as HTMLElement
     this.element.id = `${this.type}-projects`
+
+    projectState.addListener((projects: Project[]) => {
+      this.assignedProjects = projects;
+      this.renderProjects()
+    })
     this.attach();
     this.renderContent()
   }
 
+  private renderProjects() {
+   const listEl = document.getElementById(`${this.type}-projects-list`)
+   for (const item of this.assignedProjects){
+    const listItem = document.createElement('li');
+    listItem.textContent = item.title
+    listEl?.appendChild(listItem)
+   } 
+  }
 
   addProject() {
 
@@ -120,21 +184,9 @@ class ProjectList {
   private renderContent() {
     const listId = `${this.type}-projects-list`;
     this.element.querySelector('ul')!.id = listId;
-    this.element.querySelector('h2')!.textContent = this.type.toUpperCase() + 'PROJECTS'
+    this.element.querySelector('h2')!.textContent = this.type + 'PROJECTS'
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class ProjectInput {
@@ -209,7 +261,7 @@ class ProjectInput {
     const userInput = this.gatherUSerInput()
     if(Array.isArray(userInput)){
       const [title,desc,people] = userInput;
-      console.log(title,desc,people)
+      projectState.addProject(title,desc,people)
     }
     this.clearInputs()
   }
